@@ -30,6 +30,7 @@
 #include "qgsstyle.h"
 #include "qgslayoutundostack.h"
 #include "qgslayoutatlas.h"
+#include "qgslayoutdesignerinterface.h"
 #include <QMenu>
 #include <QMessageBox>
 
@@ -41,9 +42,11 @@ QgsLayoutMapWidget::QgsLayoutMapWidget( QgsLayoutItemMap *item )
 
   setupUi( this );
   connect( mScaleLineEdit, &QLineEdit::editingFinished, this, &QgsLayoutMapWidget::mScaleLineEdit_editingFinished );
-  connect( mSetToMapCanvasExtentButton, &QPushButton::clicked, this, &QgsLayoutMapWidget::mSetToMapCanvasExtentButton_clicked );
-  connect( mViewExtentInCanvasButton, &QPushButton::clicked, this, &QgsLayoutMapWidget::mViewExtentInCanvasButton_clicked );
-  connect( mUpdatePreviewButton, &QPushButton::clicked, this, &QgsLayoutMapWidget::mUpdatePreviewButton_clicked );
+  connect( mActionSetToCanvasExtent, &QAction::triggered, this, &QgsLayoutMapWidget::setToMapCanvasExtent );
+  connect( mActionViewExtentInCanvas, &QAction::triggered, this, &QgsLayoutMapWidget::viewExtentInCanvas );
+  connect( mActionSetToCanvasScale, &QAction::triggered, this, &QgsLayoutMapWidget::setToMapCanvasScale );
+  connect( mActionViewScaleInCanvas, &QAction::triggered, this, &QgsLayoutMapWidget::viewScaleInCanvas );
+  connect( mActionUpdatePreview, &QAction::triggered, this, &QgsLayoutMapWidget::updatePreview );
   connect( mFollowVisibilityPresetCheckBox, &QCheckBox::stateChanged, this, &QgsLayoutMapWidget::mFollowVisibilityPresetCheckBox_stateChanged );
   connect( mKeepLayerListCheckBox, &QCheckBox::stateChanged, this, &QgsLayoutMapWidget::mKeepLayerListCheckBox_stateChanged );
   connect( mKeepLayerStylesCheckBox, &QCheckBox::stateChanged, this, &QgsLayoutMapWidget::mKeepLayerStylesCheckBox_stateChanged );
@@ -75,8 +78,13 @@ QgsLayoutMapWidget::QgsLayoutMapWidget( QgsLayoutItemMap *item )
   connect( mOverviewCheckBox, &QgsCollapsibleGroupBoxBasic::toggled, this, &QgsLayoutMapWidget::mOverviewCheckBox_toggled );
   connect( mOverviewListWidget, &QListWidget::currentItemChanged, this, &QgsLayoutMapWidget::mOverviewListWidget_currentItemChanged );
   connect( mOverviewListWidget, &QListWidget::itemChanged, this, &QgsLayoutMapWidget::mOverviewListWidget_itemChanged );
+  connect( mActionLabelSettings, &QAction::triggered, this, &QgsLayoutMapWidget::showLabelSettings );
+
+  connect( mActionMoveContent, &QAction::triggered, this, &QgsLayoutMapWidget::switchToMoveContentTool );
   setPanelTitle( tr( "Map Properties" ) );
   mMapRotationSpinBox->setClearValue( 0 );
+
+  mDockToolbar->setIconSize( QgisApp::instance()->iconSize( true ) );
 
   //add widget for general composer item properties
   mItemPropertiesWidget = new QgsLayoutItemPropertiesWidget( this, item );
@@ -161,6 +169,11 @@ void QgsLayoutMapWidget::setReportTypeString( const QString &string )
   mAtlasPredefinedScaleRadio->setToolTip( tr( "Use one of the predefined scales of the project where the %1 feature best fits." ).arg( string ) );
 }
 
+void QgsLayoutMapWidget::setDesignerInterface( QgsLayoutDesignerInterface *iface )
+{
+  mInterface = iface;
+}
+
 bool QgsLayoutMapWidget::setNewItem( QgsLayoutItem *item )
 {
   if ( item->type() != QgsLayoutItemRegistry::LayoutMap )
@@ -173,6 +186,8 @@ bool QgsLayoutMapWidget::setNewItem( QgsLayoutItem *item )
 
   mMapItem = qobject_cast< QgsLayoutItemMap * >( item );
   mItemPropertiesWidget->setItem( mMapItem );
+  if ( mLabelWidget )
+    mLabelWidget->setItem( mMapItem );
 
   if ( mMapItem )
   {
@@ -344,6 +359,18 @@ void QgsLayoutMapWidget::overviewSymbolChanged()
   mMapItem->update();
 }
 
+void QgsLayoutMapWidget::showLabelSettings()
+{
+  mLabelWidget = new QgsLayoutMapLabelingWidget( mMapItem );
+  openPanel( mLabelWidget );
+}
+
+void QgsLayoutMapWidget::switchToMoveContentTool()
+{
+  if ( mInterface )
+    mInterface->activateTool( QgsLayoutDesignerInterface::ToolMoveItemContent );
+}
+
 void QgsLayoutMapWidget::mAtlasCheckBox_toggled( bool checked )
 {
   if ( !mMapItem )
@@ -504,7 +531,7 @@ void QgsLayoutMapWidget::rotationChanged( double value )
   mMapItem->invalidateCache();
 }
 
-void QgsLayoutMapWidget::mSetToMapCanvasExtentButton_clicked()
+void QgsLayoutMapWidget::setToMapCanvasExtent()
 {
   if ( !mMapItem )
   {
@@ -535,7 +562,21 @@ void QgsLayoutMapWidget::mSetToMapCanvasExtentButton_clicked()
   mMapItem->layout()->undoStack()->endCommand();
 }
 
-void QgsLayoutMapWidget::mViewExtentInCanvasButton_clicked()
+void QgsLayoutMapWidget::setToMapCanvasScale()
+{
+  if ( !mMapItem )
+  {
+    return;
+  }
+
+  const double newScale = QgisApp::instance()->mapCanvas()->scale();
+
+  mMapItem->layout()->undoStack()->beginCommand( mMapItem, tr( "Change Map Scale" ) );
+  mMapItem->setScale( newScale );
+  mMapItem->layout()->undoStack()->endCommand();
+}
+
+void QgsLayoutMapWidget::viewExtentInCanvas()
 {
   if ( !mMapItem )
   {
@@ -566,6 +607,17 @@ void QgsLayoutMapWidget::mViewExtentInCanvasButton_clicked()
     QgisApp::instance()->mapCanvas()->setExtent( currentMapExtent );
     QgisApp::instance()->mapCanvas()->refresh();
   }
+}
+
+void QgsLayoutMapWidget::viewScaleInCanvas()
+{
+  if ( !mMapItem )
+  {
+    return;
+  }
+
+  const double currentScale = mMapItem->scale();
+  QgisApp::instance()->mapCanvas()->zoomScale( currentScale );
 }
 
 void QgsLayoutMapWidget::mXMinLineEdit_editingFinished()
@@ -771,8 +823,8 @@ void QgsLayoutMapWidget::blockAllSignals( bool b )
   mFollowVisibilityPresetCombo->blockSignals( b );
   mKeepLayerListCheckBox->blockSignals( b );
   mKeepLayerStylesCheckBox->blockSignals( b );
-  mSetToMapCanvasExtentButton->blockSignals( b );
-  mUpdatePreviewButton->blockSignals( b );
+  mActionSetToCanvasExtent->blockSignals( b );
+  mActionUpdatePreview->blockSignals( b );
 
   blockOverviewItemsSignals( b );
 }
@@ -822,7 +874,7 @@ void QgsLayoutMapWidget::handleChangedAnnotationDisplay( QgsLayoutItemMapGrid::B
   mMapItem->layout()->undoStack()->endCommand();
 }
 
-void QgsLayoutMapWidget::mUpdatePreviewButton_clicked()
+void QgsLayoutMapWidget::updatePreview()
 {
   if ( !mMapItem )
   {
@@ -1634,4 +1686,214 @@ void QgsLayoutMapWidget::mOverviewCenterCheckbox_toggled( bool state )
   overview->setCentered( state );
   mMapItem->update();
   mMapItem->endCommand();
+}
+
+//
+// QgsLayoutMapLabelingWidget
+//
+
+QgsLayoutMapLabelingWidget::QgsLayoutMapLabelingWidget( QgsLayoutItemMap *map )
+  : QgsLayoutItemBaseWidget( nullptr, map )
+  , mMapItem( map )
+{
+  setupUi( this );
+  setPanelTitle( tr( "Label Settings" ) );
+
+  mLabelBoundarySpinBox->setClearValue( 0 );
+  mLabelBoundarySpinBox->setShowClearButton( true );
+
+  mLabelBoundaryUnitsCombo->linkToWidget( mLabelBoundarySpinBox );
+  mLabelBoundaryUnitsCombo->setConverter( &mMapItem->layout()->renderContext().measurementConverter() );
+
+  connect( mLabelBoundaryUnitsCombo, &QgsLayoutUnitsComboBox::changed, this, &QgsLayoutMapLabelingWidget::labelMarginUnitsChanged );
+  connect( mLabelBoundarySpinBox, static_cast < void ( QDoubleSpinBox::* )( double ) > ( &QDoubleSpinBox::valueChanged ), this, &QgsLayoutMapLabelingWidget::labelMarginChanged );
+  connect( mShowPartialLabelsCheckBox, &QCheckBox::toggled, this, &QgsLayoutMapLabelingWidget::showPartialsToggled );
+
+  registerDataDefinedButton( mLabelMarginDDBtn, QgsLayoutObject::MapLabelMargin );
+
+  setNewItem( map );
+}
+
+bool QgsLayoutMapLabelingWidget::setNewItem( QgsLayoutItem *item )
+{
+  if ( item->type() != QgsLayoutItemRegistry::LayoutMap )
+    return false;
+
+  if ( mMapItem )
+  {
+    disconnect( mMapItem, &QgsLayoutObject::changed, this, &QgsLayoutMapLabelingWidget::updateGuiElements );
+  }
+
+  mMapItem = qobject_cast< QgsLayoutItemMap * >( item );
+
+  if ( mMapItem )
+  {
+    connect( mMapItem, &QgsLayoutObject::changed, this, &QgsLayoutMapLabelingWidget::updateGuiElements );
+  }
+
+  updateGuiElements();
+
+  return true;
+}
+
+void QgsLayoutMapLabelingWidget::updateGuiElements()
+{
+  whileBlocking( mLabelBoundarySpinBox )->setValue( mMapItem->labelMargin().length() );
+  whileBlocking( mLabelBoundaryUnitsCombo )->setUnit( mMapItem->labelMargin().units() );
+  whileBlocking( mShowPartialLabelsCheckBox )->setChecked( mMapItem->mapFlags() & QgsLayoutItemMap::ShowPartialLabels );
+
+  if ( mBlockingItemsListView->model() )
+  {
+    QAbstractItemModel *oldModel = mBlockingItemsListView->model();
+    mBlockingItemsListView->setModel( nullptr );
+    oldModel->deleteLater();
+  }
+
+  QgsLayoutMapItemBlocksLabelsModel *model = new QgsLayoutMapItemBlocksLabelsModel( mMapItem, mMapItem->layout()->itemsModel(), mBlockingItemsListView );
+  mBlockingItemsListView->setModel( model );
+
+  updateDataDefinedButton( mLabelMarginDDBtn );
+}
+
+void QgsLayoutMapLabelingWidget::labelMarginChanged( double val )
+{
+  if ( !mMapItem )
+    return;
+
+  mMapItem->layout()->undoStack()->beginCommand( mMapItem, tr( "Change Label Margin" ), QgsLayoutItem::UndoMapLabelMargin );
+  mMapItem->setLabelMargin( QgsLayoutMeasurement( val, mLabelBoundaryUnitsCombo->unit() ) );
+  mMapItem->layout()->undoStack()->endCommand();
+  mMapItem->invalidateCache();
+}
+
+void QgsLayoutMapLabelingWidget::labelMarginUnitsChanged()
+{
+  if ( !mMapItem )
+    return;
+
+  mMapItem->layout()->undoStack()->beginCommand( mMapItem, tr( "Change Label Margin" ), QgsLayoutItem::UndoMapLabelMargin );
+  mMapItem->setLabelMargin( QgsLayoutMeasurement( mLabelBoundarySpinBox->value(), mLabelBoundaryUnitsCombo->unit() ) );
+  mMapItem->layout()->undoStack()->endCommand();
+  mMapItem->invalidateCache();
+}
+
+void QgsLayoutMapLabelingWidget::showPartialsToggled( bool checked )
+{
+  if ( !mMapItem )
+    return;
+
+  mMapItem->layout()->undoStack()->beginCommand( mMapItem, tr( "Change Label Visibility" ) );
+  QgsLayoutItemMap::MapItemFlags flags = mMapItem->mapFlags();
+  if ( checked )
+    flags |= QgsLayoutItemMap::ShowPartialLabels;
+  else
+    flags &= ~QgsLayoutItemMap::ShowPartialLabels;
+  mMapItem->setMapFlags( flags );
+  mMapItem->layout()->undoStack()->endCommand();
+  mMapItem->invalidateCache();
+}
+
+QgsLayoutMapItemBlocksLabelsModel::QgsLayoutMapItemBlocksLabelsModel( QgsLayoutItemMap *map, QgsLayoutModel *layoutModel, QObject *parent )
+  : QSortFilterProxyModel( parent )
+  , mLayoutModel( layoutModel )
+  , mMapItem( map )
+{
+  setSourceModel( layoutModel );
+}
+
+int QgsLayoutMapItemBlocksLabelsModel::columnCount( const QModelIndex & ) const
+{
+  return 1;
+}
+
+QVariant QgsLayoutMapItemBlocksLabelsModel::data( const QModelIndex &i, int role ) const
+{
+  if ( !i.isValid() )
+    return QVariant();
+
+  if ( i.column() != 0 )
+    return QVariant();
+
+  QModelIndex sourceIndex = mapToSource( index( i.row(), QgsLayoutModel::ItemId, i.parent() ) );
+
+  QgsLayoutItem *item = mLayoutModel->itemFromIndex( mapToSource( i ) );
+  if ( !item )
+  {
+    return QVariant();
+  }
+
+  switch ( role )
+  {
+    case Qt::CheckStateRole:
+      switch ( i.column() )
+      {
+        case 0:
+          return mMapItem ? ( mMapItem->isLabelBlockingItem( item ) ? Qt::Checked : Qt::Unchecked ) : Qt::Unchecked;
+        default:
+          return QVariant();
+      }
+
+    default:
+      return mLayoutModel->data( sourceIndex, role );
+  }
+}
+
+bool QgsLayoutMapItemBlocksLabelsModel::setData( const QModelIndex &index, const QVariant &value, int role )
+{
+  Q_UNUSED( role );
+
+  if ( !index.isValid() )
+    return false;
+
+  QgsLayoutItem *item = mLayoutModel->itemFromIndex( mapToSource( index ) );
+  if ( !item || !mMapItem )
+  {
+    return false;
+  }
+
+  mMapItem->layout()->undoStack()->beginCommand( mMapItem, tr( "Change Label Blocking Items" ) );
+
+  if ( value.toBool() )
+  {
+    mMapItem->addLabelBlockingItem( item );
+  }
+  else
+  {
+    mMapItem->removeLabelBlockingItem( item );
+  }
+  emit dataChanged( index, index, QVector<int>() << role );
+
+  mMapItem->layout()->undoStack()->endCommand();
+  mMapItem->invalidateCache();
+
+  return true;
+}
+
+Qt::ItemFlags QgsLayoutMapItemBlocksLabelsModel::flags( const QModelIndex &index ) const
+{
+  Qt::ItemFlags flags = QAbstractItemModel::flags( index );
+
+  if ( ! index.isValid() )
+  {
+    return flags ;
+  }
+
+  switch ( index.column() )
+  {
+    case 0:
+      return flags | Qt::ItemIsEnabled | Qt::ItemIsSelectable | Qt::ItemIsUserCheckable;
+    default:
+      return flags | Qt::ItemIsEnabled | Qt::ItemIsSelectable;
+  }
+}
+
+bool QgsLayoutMapItemBlocksLabelsModel::filterAcceptsRow( int source_row, const QModelIndex &source_parent ) const
+{
+  QgsLayoutItem *item = mLayoutModel->itemFromIndex( mLayoutModel->index( source_row, 0, source_parent ) );
+  if ( !item || item == mMapItem )
+  {
+    return false;
+  }
+
+  return true;
 }

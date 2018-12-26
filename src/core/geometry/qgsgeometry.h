@@ -207,7 +207,7 @@ class CORE_EXPORT QgsGeometry
      * \see isEmpty()
      * \since QGIS 2.10
      */
-    bool isNull() const;
+    Q_INVOKABLE bool isNull() const;
 
     //! Creates a new geometry from a WKT string
     static QgsGeometry fromWkt( const QString &wkt );
@@ -876,6 +876,7 @@ class CORE_EXPORT QgsGeometry
      * \param center Center of the minimal enclosing circle returneds
      * \param radius Radius of the minimal enclosing circle returned
      * \param segments Number of segments used to segment geometry. \see QgsEllipse::toPolygon()
+     * \returns the minimal enclosing circle as a QGIS geometry
      * \since QGIS 3.0
      */
     QgsGeometry minimalEnclosingCircle( QgsPointXY &center SIP_OUT, double &radius SIP_OUT, unsigned int segments = 36 ) const;
@@ -1392,7 +1393,16 @@ class CORE_EXPORT QgsGeometry
 #ifdef SIP_RUN
     SIP_PYOBJECT __repr__();
     % MethodCode
-    QString str = QStringLiteral( "<QgsGeometry: %1>" ).arg( sipCpp->asWkt() );
+    QString str;
+    if ( sipCpp->isNull() )
+      str = QStringLiteral( "<QgsGeometry: null>" );
+    else
+    {
+      QString wkt = sipCpp->asWkt();
+      if ( wkt.length() > 1000 )
+        wkt = wkt.left( 1000 ) + QStringLiteral( "..." );
+      str = QStringLiteral( "<QgsGeometry: %1>" ).arg( wkt );
+    }
     sipRes = PyUnicode_FromString( str.toUtf8().constData() );
     % End
 #endif
@@ -1413,23 +1423,134 @@ class CORE_EXPORT QgsGeometry
 
     /* Accessor functions for getting geometry data */
 
+#ifndef SIP_RUN
+
     /**
-     * Returns contents of the geometry as a point
-     * if wkbType is WKBPoint, otherwise returns [0,0]
+     * Returns the contents of the geometry as a 2-dimensional point.
+     *
+     * Any z or m values present in the geometry will be discarded.
+     *
+     * \warning If the geometry is not a single-point type, a QgsPoint( 0, 0 ) will be returned.
      */
     QgsPointXY asPoint() const;
+#else
 
     /**
-     * Returns contents of the geometry as a polyline
-     * if wkbType is WKBLineString, otherwise an empty list
+     * Returns the contents of the geometry as a 2-dimensional point.
+     *
+     * Any z or m values present in the geometry will be discarded.
+     *
+     * This method works only with single-point geometry types. If the geometry
+     * is not a single-point type, a TypeError will be raised. If the geometry
+     * is null, a ValueError will be raised.
+     */
+    SIP_PYOBJECT asPoint() const SIP_TYPEHINT( QgsPointXY );
+    % MethodCode
+    const QgsWkbTypes::Type type = sipCpp->wkbType();
+    if ( sipCpp->isNull() )
+    {
+      PyErr_SetString( PyExc_ValueError, QStringLiteral( "Null geometry cannot be converted to a point." ).toUtf8().constData() );
+      sipIsErr = 1;
+    }
+    else if ( QgsWkbTypes::flatType( type ) != QgsWkbTypes::Point )
+    {
+      PyErr_SetString( PyExc_TypeError, QStringLiteral( "%1 geometry cannot be converted to a point. Only Point types are permitted." ).arg( QgsWkbTypes::displayString( type ) ).toUtf8().constData() );
+      sipIsErr = 1;
+    }
+    else
+    {
+      sipRes = sipConvertFromNewType( new QgsPointXY( sipCpp->asPoint() ), sipType_QgsPointXY, Py_None );
+    }
+    % End
+#endif
+
+#ifndef SIP_RUN
+
+    /**
+     * Returns the contents of the geometry as a polyline.
+     *
+     * Any z or m values present in the geometry will be discarded. If the geometry is a curved line type
+     * (such as a CircularString), it will be automatically segmentized.
+     *
+     * \warning If the geometry is not a single-line (or single-curve) type, an empty list will be returned.
      */
     QgsPolylineXY asPolyline() const;
+#else
 
     /**
-     * Returns contents of the geometry as a polygon
-     * if wkbType is WKBPolygon, otherwise an empty list
+     * Returns the contents of the geometry as a polyline.
+     *
+     * Any z or m values present in the geometry will be discarded. If the geometry is a curved line type
+     * (such as a CircularString), it will be automatically segmentized.
+     *
+     * This method works only with single-line (or single-curve) geometry types. If the geometry
+     * is not a single-line type, a TypeError will be raised. If the geometry is null, a ValueError
+     * will be raised.
+     */
+    SIP_PYOBJECT asPolyline() const SIP_TYPEHINT( QgsPolylineXY );
+    % MethodCode
+    const QgsWkbTypes::Type type = sipCpp->wkbType();
+    if ( sipCpp->isNull() )
+    {
+      PyErr_SetString( PyExc_ValueError, QStringLiteral( "Null geometry cannot be converted to a polyline." ).toUtf8().constData() );
+      sipIsErr = 1;
+    }
+    else if ( QgsWkbTypes::geometryType( type ) != QgsWkbTypes::LineGeometry || QgsWkbTypes::isMultiType( type ) )
+    {
+      PyErr_SetString( PyExc_TypeError, QStringLiteral( "%1 geometry cannot be converted to a polyline. Only single line or curve types are permitted." ).arg( QgsWkbTypes::displayString( type ) ).toUtf8().constData() );
+      sipIsErr = 1;
+    }
+    else
+    {
+      const sipMappedType *qvector_type = sipFindMappedType( "QVector< QgsPointXY >" );
+      sipRes = sipConvertFromNewType( new QgsPolylineXY( sipCpp->asPolyline() ), qvector_type, Py_None );
+    }
+    % End
+#endif
+
+#ifndef SIP_RUN
+
+    /**
+     * Returns the contents of the geometry as a polygon.
+     *
+     * Any z or m values present in the geometry will be discarded. If the geometry is a curved polygon type
+     * (such as a CurvePolygon), it will be automatically segmentized.
+     *
+     * \warning If the geometry is not a single-polygon (or single-curve polygon) type, an empty list will be returned.
      */
     QgsPolygonXY asPolygon() const;
+#else
+
+    /**
+     * Returns the contents of the geometry as a polygon.
+     *
+     * Any z or m values present in the geometry will be discarded. If the geometry is a curved polygon type
+     * (such as a CurvePolygon), it will be automatically segmentized.
+     *
+     * This method works only with single-polygon (or single-curve polygon) geometry types. If the geometry
+     * is not a single-polygon type, a TypeError will be raised. If the geometry is null, a ValueError
+     * will be raised.
+     */
+    SIP_PYOBJECT asPolygon() const SIP_TYPEHINT( QgsPolygonXY );
+    % MethodCode
+    const QgsWkbTypes::Type type = sipCpp->wkbType();
+    if ( sipCpp->isNull() )
+    {
+      PyErr_SetString( PyExc_ValueError, QStringLiteral( "Null geometry cannot be converted to a polygon." ).toUtf8().constData() );
+      sipIsErr = 1;
+    }
+    else if ( QgsWkbTypes::geometryType( type ) != QgsWkbTypes::PolygonGeometry || QgsWkbTypes::isMultiType( type ) )
+    {
+      PyErr_SetString( PyExc_TypeError, QStringLiteral( "%1 geometry cannot be converted to a polygon. Only single polygon or curve polygon types are permitted." ).arg( QgsWkbTypes::displayString( type ) ).toUtf8().constData() );
+      sipIsErr = 1;
+    }
+    else
+    {
+      const sipMappedType *qvector_type = sipFindMappedType( "QVector<QVector<QgsPointXY>>" );
+      sipRes = sipConvertFromNewType( new QgsPolygonXY( sipCpp->asPolygon() ), qvector_type, Py_None );
+    }
+    % End
+#endif
 
     /**
      * Returns contents of the geometry as a multi point
@@ -1519,12 +1640,12 @@ class CORE_EXPORT QgsGeometry
 
     /**
      * Modifies geometry to avoid intersections with the layers specified in project properties
-     * \returns 0 in case of success,
-     *         1 if geometry is not of polygon type,
-     *         2 if avoid intersection would change the geometry type,
-     *         3 other error during intersection removal
      * \param avoidIntersectionsLayers list of layers to check for intersections
      * \param ignoreFeatures possibility to give a list of features where intersections should be ignored (not available in Python bindings)
+     * \returns 0 in case of success,
+     *          1 if geometry is not of polygon type,
+     *          2 if avoid intersection would change the geometry type,
+     *          3 other error during intersection removal
      * \since QGIS 1.5
      */
     int avoidIntersections( const QList<QgsVectorLayer *> &avoidIntersectionsLayers,

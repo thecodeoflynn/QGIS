@@ -32,12 +32,37 @@
 #include "qgsscalecalculator.h"
 #include "qgsexpressioncontext.h"
 #include "qgsmaplayer.h"
+#include "qgsgeometry.h"
 
 class QPainter;
 
 class QgsCoordinateTransform;
 class QgsScaleCalculator;
 class QgsMapRendererJob;
+
+/**
+ * \class QgsLabelBlockingRegion
+ * \ingroup core
+ *
+ * Label blocking region (in map coordinates and CRS).
+ *
+ * \since QGIS 3.6
+*/
+class CORE_EXPORT QgsLabelBlockingRegion
+{
+  public:
+
+    /**
+     * Constructor for a label blocking region
+     */
+    explicit QgsLabelBlockingRegion( const QgsGeometry &geometry )
+      : geometry( geometry )
+    {}
+
+    //! Geometry of region to avoid placing labels within (in destination map coordinates and CRS)
+    QgsGeometry geometry;
+
+};
 
 
 /**
@@ -463,6 +488,50 @@ class CORE_EXPORT QgsMapSettings
      */
     const QgsLabelingEngineSettings &labelingEngineSettings() const { return mLabelingEngineSettings; }
 
+    /**
+     * Returns the label boundary geometry, which restricts where in the rendered map labels are permitted to be
+     * placed. By default this is a null geometry, which indicates that labels can be placed anywhere within
+     * the map's visiblePolygon().
+     *
+     * The geometry is specified using the map's destinationCrs().
+     *
+     * \see setLabelBoundaryGeometry()
+     * \see labelBlockingRegions()
+     * \since QGIS 3.6
+     */
+    QgsGeometry labelBoundaryGeometry() const;
+
+    /**
+     * Sets the label \a boundary geometry, which restricts where in the rendered map labels are permitted to be
+     * placed.
+     *
+     * A null \a boundary geometry (the default) indicates that labels can be placed anywhere within
+     * the map's visiblePolygon().
+     *
+     * The geometry is specified using the map's destinationCrs().
+     *
+     * \see labelBoundaryGeometry()
+     * \see setLabelBlockingRegions()
+     * \since QGIS 3.6
+     */
+    void setLabelBoundaryGeometry( const QgsGeometry &boundary );
+
+    /**
+     * Sets a list of \a regions to avoid placing labels within.
+     * \see labelBlockingRegions()
+     * \see setLabelBoundaryGeometry()
+     * \since QGIS 3.6
+     */
+    void setLabelBlockingRegions( const QList< QgsLabelBlockingRegion > &regions ) { mLabelBlockingRegions = regions; }
+
+    /**
+     * Returns the list of regions to avoid placing labels within.
+     * \see setLabelBlockingRegions()
+     * \see labelBoundaryGeometry()
+     * \since QGIS 3.6
+     */
+    QList< QgsLabelBlockingRegion > labelBlockingRegions() const { return mLabelBlockingRegions; }
+
   protected:
 
     double mDpi;
@@ -513,11 +582,17 @@ class CORE_EXPORT QgsMapSettings
 
     QgsRenderContext::TextRenderFormat mTextRenderFormat = QgsRenderContext::TextFormatAlwaysOutlines;
 
+    QgsGeometry mLabelBoundaryGeometry;
+
 #ifdef QGISDEBUG
     bool mHasTransformContext = false;
 #endif
 
     void updateDerived();
+
+  private:
+
+    QList< QgsLabelBlockingRegion > mLabelBlockingRegions;
 };
 
 Q_DECLARE_OPERATORS_FOR_FLAGS( QgsMapSettings::Flags )

@@ -97,7 +97,8 @@ QgsExpressionBuilderWidget::QgsExpressionBuilderWidget( QWidget *parent )
   connect( mShowHelpButton, &QPushButton::clicked, this, [ = ]()
   {
     functionsplit->setSizes( QList<int>( {mOperationListGroup->width() - mHelpAndValuesWidget->minimumWidth(),
-                                          mHelpAndValuesWidget->minimumWidth()} ) );
+                                          mHelpAndValuesWidget->minimumWidth()
+                                         } ) );
     mShowHelpButton->setEnabled( false );
   } );
   connect( functionsplit, &QSplitter::splitterMoved, this, [ = ]( int, int )
@@ -234,13 +235,19 @@ void QgsExpressionBuilderWidget::currentChanged( const QModelIndex &index, const
   if ( !item )
     return;
 
-  if ( item->getItemType() == QgsExpressionItem::Field && mFieldValues.contains( item->text() ) )
-  {
-    const QStringList &values = mFieldValues[item->text()];
-    mValuesModel->setStringList( values );
-  }
-
   bool isField = mLayer && item->getItemType() == QgsExpressionItem::Field;
+  if ( isField )
+  {
+    if ( mFieldValues.contains( item->text() ) )
+    {
+      const QStringList &values = mFieldValues[item->text()];
+      mValuesModel->setStringList( values );
+    }
+    else
+    {
+      mValuesModel->setStringList( QStringList() );
+    }
+  }
   mValueGroupBox->setVisible( isField );
   mShowHelpButton->setText( isField ? tr( "Show Values" ) : tr( "Show Help" ) );
 
@@ -608,6 +615,7 @@ void QgsExpressionBuilderWidget::updateFunctionTree()
   registerItem( QStringLiteral( "Operators" ), QStringLiteral( "<>" ), QStringLiteral( " <> " ) );
   registerItem( QStringLiteral( "Operators" ), QStringLiteral( "<=" ), QStringLiteral( " <= " ) );
   registerItem( QStringLiteral( "Operators" ), QStringLiteral( ">=" ), QStringLiteral( " >= " ) );
+  registerItem( QStringLiteral( "Operators" ), QStringLiteral( "[]" ), QStringLiteral( "[ ]" ) );
   registerItem( QStringLiteral( "Operators" ), QStringLiteral( "||" ), QStringLiteral( " || " ) );
   registerItem( QStringLiteral( "Operators" ), QStringLiteral( "IN" ), QStringLiteral( " IN " ) );
   registerItem( QStringLiteral( "Operators" ), QStringLiteral( "LIKE" ), QStringLiteral( " LIKE " ) );
@@ -955,6 +963,10 @@ void QgsExpressionBuilderWidget::createMarkers( const QgsExpressionNode *inNode 
       {
         createMarkers( node->elseExp() );
       }
+      break;
+    }
+    case QgsExpressionNode::NodeType::ntIndexOperator:
+    {
       break;
     }
   }

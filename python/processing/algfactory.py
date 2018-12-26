@@ -31,6 +31,7 @@ from qgis.PyQt.QtGui import QIcon
 from qgis.core import (QgsProcessingParameterDefinition,
                        QgsProcessingAlgorithm,
                        QgsProcessingParameterString,
+                       QgsProcessingParameterAuthConfig,
                        QgsProcessingParameterNumber,
                        QgsProcessingParameterDistance,
                        QgsProcessingParameterFeatureSource,
@@ -53,6 +54,7 @@ from qgis.core import (QgsProcessingParameterDefinition,
                        QgsProcessingParameterPoint,
                        QgsProcessingParameterRange,
                        QgsProcessingParameterVectorLayer,
+                       QgsProcessingParameterMeshLayer,
                        QgsProcessingOutputString,
                        QgsProcessingOutputFile,
                        QgsProcessingOutputFolder,
@@ -222,7 +224,7 @@ class AlgWrapper(QgsProcessingAlgorithm):
         """
         Extract the real value from the parameter.
         """
-        if isinstance(parm, QgsProcessingParameterString):
+        if isinstance(parm, (QgsProcessingParameterString, QgsProcessingParameterAuthConfig)):
             value = self.parameterAsString(parameters, name, context)
             return value
         elif isinstance(parm, QgsProcessingParameterNumber):
@@ -298,6 +300,7 @@ class ProcessingAlgFactory():
     MULTILAYER = "MULTILAYER",
     RASTER_LAYER = "RASTER_LAYER",
     VECTOR_LAYER = "VECTOR_LAYER",
+    MESH_LAYER = "MESH_LAYER",
     FILE_DEST = "FILE_DEST",
     FOLDER_DEST = "FOLDER_DEST",
     RASTER_LAYER_DEST = "RASTER_LAYER_DEST",
@@ -312,6 +315,7 @@ class ProcessingAlgFactory():
     MATRIX = "MATRIX",
     POINT = "POINT",
     RANGE = "RANGE",
+    AUTH_CFG = "AUTH_CFG"
 
     def __init__(self):
         self._current = None
@@ -436,6 +440,8 @@ class ProcessingAlgFactory():
             alg.POINT: QgsProcessingParameterPoint
             alg.RANGE: QgsProcessingParameterRange
             alg.VECTOR_LAYER: QgsProcessingParameterVectorLayer
+            alg.AUTH_CFG: QgsProcessingParameterAuthConfig
+            alg.MESH_LAYER: QgsProcessingParameterMeshLayer
 
 
         :param type: The type of the input. This should be a type define on `alg` like alg.STRING, alg.DISTANCE
@@ -481,6 +487,8 @@ input_type_mapping = {
     ProcessingAlgFactory.POINT: QgsProcessingParameterPoint,
     ProcessingAlgFactory.RANGE: QgsProcessingParameterRange,
     ProcessingAlgFactory.VECTOR_LAYER: QgsProcessingParameterVectorLayer,
+    ProcessingAlgFactory.AUTH_CFG: QgsProcessingParameterAuthConfig,
+    ProcessingAlgFactory.MESH_LAYER: QgsProcessingParameterMeshLayer,
 }
 
 output_type_mapping = {
